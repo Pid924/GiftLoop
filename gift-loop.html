@@ -1,4 +1,3 @@
-<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
 <title>วงแลกของขวัญ</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -195,6 +194,8 @@ ul.ideas{margin:0;padding-left:20px;display:flex;flex-direction:column;gap:6px}
   .dlog{font-size:17px;max-height:22vh}
   .whwho,.ladres{font-size:19px}
 }
+.ver{text-align:center;font-size:13px;color:var(--muted);font-variant-numeric:tabular-nums}
+.vtag{position:absolute;right:max(10px,env(safe-area-inset-right,0px));bottom:calc(6px + env(safe-area-inset-bottom,0px));z-index:2;font-size:11px;opacity:.6;pointer-events:none}
 .loading{position:absolute;inset:0;display:grid;place-items:center;color:var(--muted);pointer-events:none}
 @media (prefers-reduced-motion:reduce){.slot.landed{animation:none}}
 </style>
@@ -250,9 +251,11 @@ ul.ideas{margin:0;padding-left:20px;display:flex;flex-direction:column;gap:6px}
       <li><b>วงปิดคือไฮไลต์:</b> ตาสุดท้ายนับถอยหลังพร้อมกัน แล้วดูริบบิ้นทั้งวงสว่างขึ้นพร้อมพลุ</li>
     </ul>
   </section>
+  <p class="ver">เวอร์ชัน <span class="vnum"></span></p>
 </div>
 
 <div id="game" hidden>
+  <span class="ver vtag">v<span class="vnum"></span></span>
   <canvas id="c" aria-label="ฉาก 3D วงกล่องของขวัญ"></canvas>
   <div class="loading" id="loading">กำลังจัดเวที…</div>
   <div class="hud">
@@ -364,29 +367,42 @@ const DARES = [
 const COLORS = ["#FF5A78","#F2B24A","#4FD1A5","#6AA8FF","#C78BFF","#FF8A4C","#4FD6E8","#F27BC4"];
 const $ = id => document.getElementById(id);
 
+const APP_VERSION="15 · 18 ต.ค. 2569";
+document.querySelectorAll(".vnum").forEach(e=>e.textContent=APP_VERSION);
 const DEFAULT_NAMES=["เหมี่ยว","ต้า","บอล","ปิง","นัท","ซัน"];
 let rows = DEFAULT_NAMES.map(name=>({name,photo:null}));
 let runId=0, players=[], order=[], step=0, spinning=false, mode="chain", soundOn=true, audio;
 
-try{const s=JSON.parse(localStorage.getItem("giftloop-rows")||"null");if(Array.isArray(s)&&s.length>=2){rows=s.map(r=>({name:String(r.name||""),photo:r.photo||null,photoId:r.photoId||null}));
+try{const s=JSON.parse(localStorage.getItem("giftloop-rows")||"null");if(Array.isArray(s)&&s.length>=2){rows=s.map(r=>({name:String(r.name||""),photo:r.photo||r.photoData||null,photoId:r.photoId||null,photoData:r.photoData||null}));
   // a browser still holding the old sample names gets the new defaults (photos kept)
   if(rows.map(r=>r.name).join()==="มิ้นท์,ต้น,แพรว,บอส,ฝน,เจได")rows.forEach((r,i)=>r.name=DEFAULT_NAMES[i])}}catch(e){}
-function saveRows(){scheduleShared();try{localStorage.setItem("giftloop-rows",JSON.stringify(rows))}catch(e){try{localStorage.setItem("giftloop-rows",JSON.stringify(rows.map(r=>({name:r.name}))))}catch(e2){}}}
+function saveRows(){scheduleShared();idbPut(rows);try{localStorage.setItem("giftloop-rows",JSON.stringify(rows))}catch(e){try{localStorage.setItem("giftloop-rows",JSON.stringify(rows.map(r=>({name:r.name}))))}catch(e2){}}}
 
 // ---------- shared roster: names + photos saved with the artifact so everyone who opens the link sees them ----------
 const shared={db:null,assets:null,ref:null,canSave:false,sent:new Set(),timer:null};
 function setShare(t){const el=$("shareStatus");el.textContent=t;el.hidden=!t}
 function dataURLtoBlob(u){const [h,b]=u.split(",");const bin=atob(b),a=new Uint8Array(bin.length);for(let k=0;k<bin.length;k++)a[k]=bin.charCodeAt(k);return new Blob([a],{type:(h.match(/data:([^;]+)/)||[])[1]||"image/jpeg"})}
-function rosterJSON(){return JSON.stringify(rows.map(r=>({name:r.name||"",photoId:r.photoId||null})))}
+function rosterJSON(){return JSON.stringify(rows.map(r=>({name:r.name||"",photoId:r.photoId||null,photoData:r.photoData||null})))}
+// photos also live inline in the roster doc as a small JPEG, so they show for everyone even where uploaded files can't load
+function shrink(url,S=160,q=.72){return new Promise(res=>{const im=new Image();im.onload=()=>{const c=document.createElement("canvas");c.width=c.height=S;const m=Math.min(im.width,im.height);c.getContext("2d").drawImage(im,(im.width-m)/2,(im.height-m)/2,m,m,0,0,S,S);try{res(c.toDataURL("image/jpeg",q))}catch(e){res(null)}};im.onerror=()=>res(null);im.crossOrigin="anonymous";im.src=url})}
+// IndexedDB copy of the roster: bigger and longer-lived than localStorage, so photos survive a reload on this device
+function idbOpen(){return new Promise((res,rej)=>{try{const q=indexedDB.open("giftloop",1);q.onupgradeneeded=()=>q.result.createObjectStore("kv");q.onsuccess=()=>res(q.result);q.onerror=()=>rej(q.error)}catch(e){rej(e)}})}
+function idbPut(v){idbOpen().then(db=>{const t=db.transaction("kv","readwrite");t.objectStore("kv").put(JSON.parse(JSON.stringify(v)),"rows")}).catch(()=>{})}
+function idbGet(){return idbOpen().then(db=>new Promise(res=>{const q=db.transaction("kv").objectStore("kv").get("rows");q.onsuccess=()=>res(q.result||null);q.onerror=()=>res(null)})).catch(()=>null)}
+idbGet().then(v=>{if(shared.loaded||!Array.isArray(v)||v.length<2)return;
+  const same=v.length===rows.length&&v.every((r,i)=>r.name===rows[i].name);
+  if(same){let got=false;v.forEach((r,i)=>{if(!rows[i].photo&&(r.photo||r.photoData)){rows[i].photo=r.photo||r.photoData;rows[i].photoData=r.photoData||null;rows[i].photoId=r.photoId||null;got=true}});if(got&&!$("setup").hidden)renderRows()}
+  else if(!rows.some(r=>r.photo)&&v.some(r=>r.photo)){rows=v.map(r=>({name:String(r.name||""),photo:r.photo||r.photoData||null,photoId:r.photoId||null,photoData:r.photoData||null}));if(!$("setup").hidden)renderRows()}});
 function scheduleShared(){
   if(!shared.canSave) return;
   clearTimeout(shared.timer);setShare("กำลังบันทึก…");
   shared.timer=setTimeout(async()=>{
     // photos added before saving was available are uploaded now
-    if(shared.assets)for(const r of rows)if(r.photo&&r.photo.startsWith("data:")&&!r.photoId){try{const a=await shared.assets.upload(dataURLtoBlob(r.photo));r.photo=a.url;r.photoId=a.id}catch(e){}}
+    for(const r of rows)if(r.photo&&!r.photoData)r.photoData=await shrink(r.photo);
+    if(shared.assets)for(const r of rows)if(r.photo&&r.photo.startsWith("data:")&&!r.photoId){try{const a=await shared.assets.upload(dataURLtoBlob(r.photo));r.photoId=a.id}catch(e){}}
     const js=rosterJSON();shared.sent.add(js);
     try{await shared.ref.set({rows:JSON.parse(js),updatedAt:Date.now()});setShare("บันทึกรายชื่อและรูปแล้ว ✓ คนที่เปิดลิงก์นี้จะเห็นเหมือนกัน")}
-    catch(e){setShare("บันทึกไม่สำเร็จ รายชื่อและรูปยังอยู่ในเครื่องนี้")}
+    catch(e){shared.sent.delete(js);setShare(shared.editor?"บันทึกไม่สำเร็จ รายชื่อและรูปยังอยู่ในเครื่องนี้":"รายชื่อและรูปเก็บไว้ในเครื่องนี้ (เฉพาะเจ้าของเกมที่บันทึกให้ทุกคนเห็นได้)")}
   },700);
 }
 (async()=>{
@@ -394,15 +410,23 @@ function scheduleShared(){
   const [db,assets,user]=await Promise.all([claude.use("db"),claude.use("assets"),claude.use("user")]);
   if(!db){setShare("รูปและรายชื่อจะเก็บไว้แค่ในเครื่องนี้ (ต้องล็อกอิน claude.ai ถึงจะเห็นรายชื่อที่บันทึกไว้)");return}
   shared.db=db;shared.assets=assets;shared.ref=db.doc("game/roster");
-  shared.canSave=!!(user&&user.canEdit());
+  // canEdit()/can() are promises; a viewer the platform doesn't rule out still tries, and a refused write decides
+  shared.editor=user?await user.canEdit().catch(()=>false):false;
+  const w=user&&user.can?await user.can("data.write").catch(()=>null):null;
+  shared.canSave=shared.editor||w!==false;
   setShare(shared.canSave?"รายชื่อและรูปจะบันทึกอัตโนมัติ คนที่เปิดลิงก์นี้จะเห็นเหมือนกัน":"");
   shared.ref.onSnapshot(snap=>{
+    const first=!shared.loaded;shared.loaded=true;
     if(!snap.exists){if(shared.canSave)scheduleShared();return}
     const d=snap.data();if(!Array.isArray(d.rows)||d.rows.length<2) return;
-    const js=JSON.stringify(d.rows.map(r=>({name:String(r.name||""),photoId:r.photoId||null})));
+    const js=JSON.stringify(d.rows.map(r=>({name:String(r.name||""),photoId:r.photoId||null,photoData:typeof r.photoData==="string"&&r.photoData.startsWith("data:image/")?r.photoData:null})));
     if(shared.sent.has(js)||js===rosterJSON()) return;
-    rows=JSON.parse(js).map(r=>({name:r.name,photoId:r.photoId,photo:r.photoId?"/_blob/"+r.photoId:null}));
-    try{localStorage.setItem("giftloop-rows",JSON.stringify(rows))}catch(e){}
+    const remote=JSON.parse(js);
+    // first load: photos this device has but the saved roster lacks (same names) are kept and pushed up
+    if(first&&shared.canSave&&remote.length===rows.length&&remote.every((r,i)=>r.name===rows[i].name)&&rows.some((r,i)=>r.photo&&!remote[i].photoId&&!remote[i].photoData)){
+      rows.forEach((r,i)=>{if(!r.photo){r.photoId=remote[i].photoId;r.photoData=remote[i].photoData;r.photo=r.photoData||(r.photoId?"/_blob/"+r.photoId:null)}});scheduleShared();if(!$("setup").hidden)renderRows();return}
+    rows=remote.map(r=>({name:r.name,photoId:r.photoId,photoData:r.photoData,photo:r.photoData||(r.photoId?"/_blob/"+r.photoId:null)}));
+    try{localStorage.setItem("giftloop-rows",JSON.stringify(rows))}catch(e){}idbPut(rows);
     if(!$("setup").hidden)renderRows();
     if(!shared.canSave)setShare("ใช้รายชื่อและรูปที่เจ้าของเกมบันทึกไว้ แก้ในเครื่องนี้ได้ แต่จะไม่บันทึกให้คนอื่น");
   },()=>setShare("โหลดรายชื่อที่บันทึกไว้ไม่สำเร็จ ใช้ข้อมูลในเครื่องนี้แทน"));
@@ -424,8 +448,8 @@ function renderRows(){
       <button type="button" class="x" aria-label="ลบคนนี้">×</button>`;
     d.querySelector("input[type=text]").oninput=e=>{rows[i].name=e.target.value;saveRows()};
     d.querySelector("input[type=file]").onchange=e=>{const f=e.target.files[0];if(f)loadPhoto(f).then(async url=>{
-      rows[i].photo=url;rows[i].photoId=null;
-      if(shared.assets){try{const a=await shared.assets.upload(dataURLtoBlob(url));rows[i].photo=a.url;rows[i].photoId=a.id}catch(err){setShare("อัปโหลดรูปไปเก็บไม่สำเร็จ รูปนี้จะอยู่แค่ในเครื่องนี้")}}
+      rows[i].photo=url;rows[i].photoId=null;rows[i].photoData=await shrink(url);
+      if(shared.assets){try{const a=await shared.assets.upload(dataURLtoBlob(url));rows[i].photoId=a.id}catch(err){}}
       saveRows();renderRows()}).catch(()=>{$("err").textContent="เปิดรูปนี้ไม่ได้ ลองรูปอื่น"})};
     d.querySelector(".x").onclick=()=>{if(rows.length>2){rows.splice(i,1);saveRows();renderRows()}};
     box.appendChild(d);
@@ -1183,5 +1207,3 @@ if(window.ResizeObserver){
   new ResizeObserver(()=>{if(mode==="ladder"&&lad&&!lad.busy&&!$("game").hidden)drawLadder()}).observe($("ladScroll"));
 }
 </script>
-
-</body></html>
