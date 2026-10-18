@@ -198,18 +198,29 @@ ul.ideas{margin:0;padding-left:20px;display:flex;flex-direction:column;gap:6px}
 .ver{text-align:center;font-size:13px;color:var(--muted);font-variant-numeric:tabular-nums}
 .vtag{position:absolute;right:max(10px,env(safe-area-inset-right,0px));bottom:calc(6px + env(safe-area-inset-bottom,0px));z-index:2;font-size:11px;opacity:.6;pointer-events:none}
 /* zoom: scales the menu and the HUD (not the 3D canvas), remembered per device */
-:root{--z:1}
-#setup,.hud{zoom:var(--z)}
-.zoomctl{display:inline-flex;align-items:center;gap:2px;background:rgba(26,21,52,.78);border:1px solid var(--line);border-radius:999px;padding:2px}
-.zoomctl button,.topbtns .zoomctl button{border:none;background:none;padding:6px 12px;min-height:36px;font-size:15px;font-weight:700}
-.zoomctl .zval{min-width:3.2em;text-align:center;font-size:13px;color:var(--muted);font-variant-numeric:tabular-nums}
+:root{--z:1;--hz:1}
+#setup{zoom:var(--z)}
+/* in the game the HUD zooms as far as it still fits the screen (--hz, set by fitHud); the top bar stays compact */
+.hud{zoom:var(--hz)}
+.hud .top{zoom:calc(min(var(--hz),1.25)/var(--hz))}
+#setup .zoomctl{zoom:calc(1/var(--z))}
+.zoomctl{display:inline-flex;align-items:center;gap:2px;background:rgba(26,21,52,.78);border:1px solid var(--line);border-radius:999px;padding:3px}
+.zoomctl button,.topbtns .zoomctl button{border:none;background:none;padding:6px 12px;min-height:38px;font-size:15px;font-weight:600;font-variant-numeric:tabular-nums;color:var(--muted)}
+.zoomctl button[aria-pressed="true"],.topbtns .zoomctl button[aria-pressed="true"]{background:var(--gold);color:var(--ribbon-ink)}
+/* at 200% a phone menu is ~195 CSS px wide: tighten the player rows */
+html[data-z="2"] body{padding-left:max(8px,env(safe-area-inset-left,0px));padding-right:max(8px,env(safe-area-inset-right,0px))}
+html[data-z="2"] .panel{padding:12px}
+html[data-z="2"] .prow{gap:6px;padding:6px}
+html[data-z="2"] .pic{width:44px;height:44px;font-size:18px}
+html[data-z="2"] .prow .x{min-width:30px;padding:0 4px}
+html[data-z="2"] .prow input[type=text]{padding:8px}
 .loading{position:absolute;inset:0;display:grid;place-items:center;color:var(--muted);pointer-events:none}
 @media (prefers-reduced-motion:reduce){.slot.landed{animation:none}}
 </style>
 
 <div class="wrap" id="setup">
   <header style="display:flex;flex-direction:column;gap:6px">
-    <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap"><span class="eyebrow">เกมแลกของขวัญ 3D · วงเดียววนครบทุกคน</span><span class="zoomctl" role="group" aria-label="ขนาดหน้าจอ"><button type="button" class="zout" aria-label="ย่อ">A−</button><span class="zval">100%</span><button type="button" class="zin" aria-label="ขยาย">A+</button></span></div>
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap"><span class="eyebrow">เกมแลกของขวัญ 3D · วงเดียววนครบทุกคน</span><span class="zoomctl" role="group" aria-label="ขนาดหน้าจอ"><button type="button" data-z="1">100%</button><button type="button" data-z="1.6">160%</button><button type="button" data-z="2">200%</button></span></div>
     <h1>วงแลกของขวัญ</h1>
     <p class="muted">ใส่ชื่อและรูปของทุกคน แล้วสุ่มให้ต่อกันเป็นวงเดียว ไม่มีใครได้ของตัวเอง และไม่มีวงย่อยแยกออกไป</p>
   </header>
@@ -272,7 +283,7 @@ ul.ideas{margin:0;padding-left:20px;display:flex;flex-direction:column;gap:6px}
         <span class="chip" id="counter"></span>
       </div>
       <div class="topbtns">
-        <span class="zoomctl" role="group" aria-label="ขนาดหน้าจอ"><button type="button" class="zout" aria-label="ย่อ">A−</button><span class="zval">100%</span><button type="button" class="zin" aria-label="ขยาย">A+</button></span>
+        <span class="zoomctl" role="group" aria-label="ขนาดหน้าจอ"><button type="button" data-z="1">100%</button><button type="button" data-z="1.6">160%</button><button type="button" data-z="2">200%</button></span>
         <button type="button" id="soundBtn">เสียง: เปิด</button>
         <button type="button" id="showAllBtn">เปิดผลทั้งหมด</button>
       </div>
@@ -375,15 +386,26 @@ const DARES = [
 const COLORS = ["#FF5A78","#F2B24A","#4FD1A5","#6AA8FF","#C78BFF","#FF8A4C","#4FD6E8","#F27BC4"];
 const $ = id => document.getElementById(id);
 
-const APP_VERSION="16 · 18 ต.ค. 2569";
+const APP_VERSION="17 · 18 ต.ค. 2569";
 document.querySelectorAll(".vnum").forEach(e=>e.textContent=APP_VERSION);
 let zoomLv=1;try{zoomLv=+localStorage.getItem("giftloop-zoom")||1}catch(e){}
-function setZoom(z){zoomLv=Math.round(Math.min(1.6,Math.max(.7,z))*10)/10;document.documentElement.style.setProperty("--z",zoomLv);
-  document.querySelectorAll(".zval").forEach(e=>e.textContent=Math.round(zoomLv*100)+"%");
+function setZoom(z){zoomLv=[1,1.6,2].includes(z)?z:1;document.documentElement.style.setProperty("--z",zoomLv);document.documentElement.dataset.z=zoomLv;
+  document.querySelectorAll(".zoomctl button").forEach(b=>b.setAttribute("aria-pressed",+b.dataset.z===zoomLv));
   try{localStorage.setItem("giftloop-zoom",zoomLv)}catch(e){}
-  dispatchEvent(new Event("resize"))}
-document.querySelectorAll(".zin").forEach(b=>b.onclick=()=>setZoom(zoomLv+.1));
-document.querySelectorAll(".zout").forEach(b=>b.onclick=()=>setZoom(zoomLv-.1));
+  fitHud();dispatchEvent(new Event("resize"))}
+let fitQueued=false;
+function fitHud(){
+  const hud=document.querySelector(".hud");if(!hud)return;
+  let hz=zoomLv;document.documentElement.style.setProperty("--hz",hz);
+  if($("game").hidden)return;
+  const over=()=>hud.scrollHeight>hud.clientHeight+2||[...hud.querySelectorAll(".ladsheet")].some(e=>e.offsetParent&&e.scrollHeight>e.clientHeight+2);
+  while(hz>1&&over()){hz=Math.max(1,Math.round((hz-.1)*10)/10);document.documentElement.style.setProperty("--hz",hz)}
+}
+function queueFit(){if(fitQueued)return;fitQueued=true;requestAnimationFrame(()=>{fitQueued=false;fitHud()})}
+addEventListener("resize",queueFit);
+new MutationObserver(queueFit).observe(document.querySelector(".hud"),{subtree:true,childList:true,attributes:true,attributeFilter:["hidden"],characterData:true});
+new MutationObserver(queueFit).observe($("game"),{attributes:true,attributeFilter:["hidden"]});
+document.querySelectorAll(".zoomctl button").forEach(b=>b.onclick=()=>setZoom(+b.dataset.z));
 setZoom(zoomLv);
 const DEFAULT_NAMES=["เหมี่ยว","ต้า","บอล","ปิง","นัท","ซัน"];
 let rows = DEFAULT_NAMES.map(name=>({name,photo:null}));
